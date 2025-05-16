@@ -44,7 +44,7 @@ DirCreate(tempDir)
 HttpDownload(cdnUrl, zipPath)
 RunWaitFormat('"{1}" x "{2}" -o"{3}" -y', sevenZip, zipPath, tempDir)
 
-Loop 2 {
+Loop 1 {
     try {
         RunWait Format('"{1}"', exePath)
     } catch as e {
